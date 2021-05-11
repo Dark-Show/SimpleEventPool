@@ -1,65 +1,69 @@
 // Title: Simple Event Pool
 // Author: Gregory Michalik
+// Version: 0.2
+// Date: 2020/03/17
 // 
 // Usage:
-//   Modify struct pool_data with any needed event data.
+//   Modify struct sep_event to add any needed event data.
 //
 //   Create/Init pool:
-//     s_event_pool ev_pool;      // Define event pool
-//     event_pool_init(&ev_pool); // Init event pool for usage
+//	   sep_pool *pool = NULL; // Define event pool
+//	   evid = event_register_owner(&pool); // Add first owner / init
 // 
 //   Insert event for owner:
-//     s_event ev;       // Event to be inserted
-//     int ret;          // Return code
-//     ev.data.xx = xx;  // Append additional data
-//     ret = event_insert(&ev_pool, EVENT_OWNER_DEF, ev); // Insert event
-//     if (ret == EVENT_ERROR) { // Event pool full
-//       ...
+//     sep_event ev;	 // Event data to be inserted
+//     int ret;			 // Return code
+//     ev.command = 0;	 // Append additional data
+//	   ev.value = '\0';
+//     ret = event_send(pool, evid, evid, ev); // Insert event
+//     if (!ret) { // Event pool full
+//	       if (ret == SEP_ERROR_LIMIT) {
+//			   ...
+//		   } else if ( ret == SEP_ERROR_EXIST) {
+//			   ...
+//		   } else {
+//			   ...Unexpected
+//		   }
 //     }
 //
 //   Get latest event for owner (Removes from pool):
-//     s_event ev; // Empty event
-//     ev = event_get(&ev_pool, EVENT_OWNER_DEF); // Get latest event / removes from pool
-//     if (ev.id != EVENT_FREE_ID) { // Have Events
-//       ...
-//     }
+//     sep_event ev; // Empty event
+//     ev = event_get(&ev_pool, evid); // Get latest event / removes from pool
+//	   if (ev.owner == SEP_ERROR) {
+//       if (ev.owner == SEP_ERROR_EXIST) {
+//         ...
+//       } else if (ev.owner == SEP_ERROR_MEM) { 
 
-#define EVENT_OWNERS       1    // Def owner only
-#define EVENT_OWNER_LIMIT  1024 // Max events per owner
+#define SEP_LIMIT_OWNER     32      // Max owners
+#define SEP_LIMIT_EVENT     1000    // Max events per owner
+#define SEP_ERROR           -1      // Generic error
+#define SEP_ERROR_LIMIT     -2      // Limit error
+#define SEP_ERROR_EXIST     -3      // ID exist error
+#define SEP_ERROR_MEM       -4      // ID exist error
 
-#define EVENT_POOL_MAX     (EVENT_OWNER_LIMIT*EVENT_OWNERS) // Max events in pool
-#define EVENT_ERROR        -1   // Error return code
-#define EVENT_FREE_ID      -1   // ID marker for unused event
-#define EVENT_OWNER_DEF    0    // Def counts as an owner
-#define EVENT_OWNER_1      1
-#define EVENT_OWNER_2      2
-#define EVENT_OWNER_3      3
-#define EVENT_OWNER_4      4
-#define EVENT_OWNER_5      5
-#define EVENT_OWNER_6      6
-#define EVENT_OWNER_7      7
-#define EVENT_OWNER_8      8
-
-struct s_event_data { // EDIT ME
-	int command;
-	int value;
+struct sep_event {
+    int     id;	        // Internal Event ID
+    int     owner;      // Owner ID
+    int     from;       // From Owner ID
+    int     command;    // OUR DATA
+	char    *value;     // OUR DATA
 };
-typedef struct s_event_data s_event_data;
+typedef struct sep_event sep_event;
 
-struct s_event {
-	int          id;    // Required, leave untouched.
-	int          owner; // Required, read only if accessing raw.
-	s_event_data data;  // Passed event data
+struct sep_pool {
+    sep_event **events;	// Events
+    int     es;         // Event Space
+    int     oc;         // Owner Count
+    int     ec;         // Event Count
+    int     oec[SEP_LIMIT_OWNER];	// Owner event counts
+    int     c[SEP_LIMIT_OWNER];		// Owner current event id
+    int     on[SEP_LIMIT_OWNER];	// Owner next id tracking
 };
-typedef struct s_event s_event;
+typedef struct sep_pool sep_pool;
 
-struct s_event_pool {
-	s_event events[EVENT_POOL_MAX]; // Events
-	int     count[EVENT_OWNERS];    // Owner event counts / read only if accessing raw.
-	int     current[EVENT_OWNERS];  // Owner current variable, leave untouched.
-};
-typedef struct s_event_pool s_event_pool;
-
-void event_pool_init(s_event_pool *ep);                   // Init event pool
-int event_insert(s_event_pool *ep, int owner, s_event e); // Insert event for owner into pool
-s_event event_get(s_event_pool *ep, int owner);           // Get event for owner in order
+int event_register_owner(sep_pool **pool); // Add event owner to pool, returns owner id
+int event_deregister_owner(sep_pool *pool, int owner); // Remove owner from pool, returns 1 on success
+int event_send(sep_pool *pool, int to, int from, sep_event event); // Send event to owner id
+int event_owner_exist(sep_pool *pool,  int owner); // Check to see if an owner id exists
+sep_event event_get(sep_pool *pool, int owner); // Get next event, Returns event.owner == SEP_ERROR on error, .id (SEP_ERROR_LIMIT | SEP_ERROR_EXIST)
+void event_free(sep_pool *pool); // Free event pool memory
